@@ -5,19 +5,23 @@ shards = [189344, 188576, 188578, 188579, 188577, 189389, 188585, 188589, 189376
 def test_ps1_import_file():
     from get_lsst_refcats.utils import make_refcat_import
     with tempfile.TemporaryDirectory() as tempdir:
-        make_refcat_import("ps1_pv3_3pi_20170110", shards, tempdir)
+        table = make_refcat_import("ps1_pv3_3pi_20170110", shards, tempdir)
+        assert len(table) == len(shards)
 
 def test_ps1_old_import_file():
     from get_lsst_refcats.utils import make_refcat_import
     with tempfile.TemporaryDirectory() as tempdir:
-        make_refcat_import("ps1_pv3_3pi_20170110_old", shards, tempdir)
+        table = make_refcat_import("ps1_pv3_3pi_20170110_old", shards, tempdir)
+        assert len(table) == len(shards)
 
 def test_gaiadr3_import_file():
     from get_lsst_refcats.utils import make_refcat_import
     with tempfile.TemporaryDirectory() as tempdir:
-        make_refcat_import("gaia_dr3_20230707", shards, tempdir)
+        table = make_refcat_import("gaia_dr3_20230707", shards, tempdir)
+        assert len(table) == len(shards)
 
 def test_gaiadr2_import_file():
     from get_lsst_refcats.utils import make_refcat_import
     with tempfile.TemporaryDirectory() as tempdir:
-        make_refcat_import("gaia_dr2_20200414", shards, tempdir)
+        table = make_refcat_import("gaia_dr2_20200414", shards, tempdir)
+        assert len(table) == len(shards)
