@@ -4,6 +4,7 @@ import yaml
 import astropy.table
 import requests
 import socket
+import re
 
 refcat_name_to_dataset_name = {
     "ps1": "ps1_pv3_3pi_20170110",
@@ -60,50 +61,54 @@ def load_refcat_yaml(dataset_name, output_dir):
         raise ValueError(f"dataset name {dataset_name} is not supported")
 
 def make_refcat_import(dataset_name, shards, output_dir):
-    _shards = {str(s): True for s in shards}
-    paths = []
-    if dataset_name == "ps1_pv3_3pi_20170110":
-        output_dir = os.path.join(output_dir, "ps1_pv3_3pi_20170110")
-        # shards_dir = os.path.join(PROJECT_DIR, "ps1", "ps1_pv3_3pi_20170110")
-        # paths = list(map(lambda shard : os.path.join(shards_dir, f"{shard}.fits"), shards))
-        with open(get_file("ps1/ps1_pv3_3pi_20170110/index.dat", output_dir)) as f:
-            for line in f:
-                filename = line.strip()
-                for shard in shards:
-                    if str(shard) in filename:
-                        paths.append(get_file(os.path.join("ps1", "ps1_pv3_3pi_20170110", filename), output_dir))
-    elif dataset_name == "ps1_pv3_3pi_20170110_old":
-        output_dir = os.path.join(output_dir, "ps1_pv3_3pi_20170110_old")
-        with open(get_file("refcats/ps1_pv3_3pi_20170110/index.dat", output_dir)) as f:
-            for line in f:
-                filename = line.strip()
-                for shard in shards:
-                    if str(shard) in filename:
-                        paths.append(get_file(os.path.join("refcats", "ps1_pv3_3pi_20170110", filename), output_dir))
-    elif dataset_name == "gaia_dr2_20200414":
-        output_dir = os.path.join(output_dir, "gaia_dr2_20200414")
-        with open(get_file("refcats/gaia_dr2_20200414/index.dat", output_dir)) as f:
-            for line in f:
-                filename = line.strip()
-                for shard in shards:
-                    if str(shard) in filename:
-                        paths.append(get_file(os.path.join("refcats", "gaia_dr2_20200414", filename), output_dir))
-    elif dataset_name == "gaia_dr3_20230707":
-        output_dir = os.path.join(output_dir, "gaia_dr3_20230707")
-        with open(get_file("GAIA_DR3/gaia_dr3/index.dat", output_dir)) as f:
-            for line in f:
-                filename = line.strip()
-                for shard in shards:
-                    if str(shard) in filename:
-                        paths.append(get_file(os.path.join("GAIA_DR3", "gaia_dr3", filename), output_dir))
-    else:
-        raise ValueError(f"dataset name {dataset_name} is not supported")
-    
-    htm7 = astropy.table.Column(shards, name='htm7')
-    filename = astropy.table.Column(paths, name='filename')
-    mask = list(map(lambda x : os.path.exists(x), filename))
-    return astropy.table.Table([filename[mask], htm7[mask]])
+    dataset_configs = {
+        "ps1_pv3_3pi_20170110": ("ps1_pv3_3pi_20170110", "ps1/ps1_pv3_3pi_20170110"),
+        "ps1_pv3_3pi_20170110_old": (
+            "ps1_pv3_3pi_20170110_old",
+            "refcats/ps1_pv3_3pi_20170110",
+        ),
+        "gaia_dr2_20200414": ("gaia_dr2_20200414", "refcats/gaia_dr2_20200414"),
+        "gaia_dr3_20230707": ("gaia_dr3_20230707", "GAIA_DR3/gaia_dr3"),
+    }
 
+    if dataset_name not in dataset_configs:
+        raise ValueError(f"dataset name {dataset_name} is not supported")
+
+    sub_dir, rel_path = dataset_configs[dataset_name]
+    output_dir = os.path.join(output_dir, sub_dir)
+    index_file = get_file(f"{rel_path}/index.dat", output_dir)
+
+    # Pre-compile regex pattern for each shard to match full numbers only
+    # (?<!\d) ensures no digit directly before, (?!\d) ensures no digit directly after
+    shard_patterns = {s: re.compile(rf"(?<!\d){s}(?!\d)") for s in shards}
+
+    shard_to_filename = {}
+
+    with open(index_file) as f:
+        for line in f:
+            filename = line.strip()
+            for s, pattern in shard_patterns.items():
+                if pattern.search(filename):
+                    shard_to_filename[s] = filename
+                    break  # Found the shard for this file, move to next line
+
+    aligned_paths = []
+    aligned_shards = []
+
+    # Process requested shards in guaranteed order
+    for s in shards:
+        if s in shard_to_filename:
+            filename = shard_to_filename[s]
+            full_path = get_file(os.path.join(rel_path, filename), output_dir)
+
+            if os.path.exists(full_path):
+                aligned_paths.append(full_path)
+                aligned_shards.append(s)
+
+    return astropy.table.Table(
+        [aligned_paths, aligned_shards], names=["filename", "htm7"]
+    )
+    
 def deferred_import(module, name=None, ns=globals()):
     """Defer the import of the stack untill we actually need it to be able to
     print help message before the heat death of the universe.

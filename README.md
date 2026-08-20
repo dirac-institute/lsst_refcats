@@ -7,7 +7,7 @@ Requires the LSST Science Pipelines as a dependency: https://pipelines.lsst.io/
 
 Install:
 ```
-$ python -m pip install git+github.com/dirac-institute/lsst_refcats
+$ python -m pip install git+https://github.com/dirac-institute/lsst_refcats.git
 ```
 
 Usage:
