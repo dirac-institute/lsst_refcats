@@ -4,6 +4,7 @@ import yaml
 import astropy.table
 import requests
 import socket
+import re
 
 refcat_name_to_dataset_name = {
     "ps1": "ps1_pv3_3pi_20170110",
@@ -60,7 +61,6 @@ def load_refcat_yaml(dataset_name, output_dir):
         raise ValueError(f"dataset name {dataset_name} is not supported")
 
 def make_refcat_import(dataset_name, shards, output_dir):
-    # Map dataset names to their relative index/file prefix
     dataset_configs = {
         "ps1_pv3_3pi_20170110": ("ps1_pv3_3pi_20170110", "ps1/ps1_pv3_3pi_20170110"),
         "ps1_pv3_3pi_20170110_old": (
@@ -78,33 +78,31 @@ def make_refcat_import(dataset_name, shards, output_dir):
     output_dir = os.path.join(output_dir, sub_dir)
     index_file = get_file(f"{rel_path}/index.dat", output_dir)
 
-    # Convert shards to string set for O(1) exact lookups
-    shards_set = {str(s) for s in shards}
-    shard_to_path = {}
+    # Pre-compile regex pattern for each shard to match full numbers only
+    # (?<!\d) ensures no digit directly before, (?!\d) ensures no digit directly after
+    shard_patterns = {s: re.compile(rf"(?<!\d){s}(?!\d)") for s in shards}
+
+    shard_to_filename = {}
 
     with open(index_file) as f:
         for line in f:
             filename = line.strip()
-            # Parse the actual shard/htm7 number from the filename (e.g. "0123.fits" -> "0123")
-            # Adjust the splitting logic below if filenames follow a different pattern like "file_123.fits"
-            file_shard = os.path.splitext(os.path.basename(filename))[0]
+            for s, pattern in shard_patterns.items():
+                if pattern.search(filename):
+                    shard_to_filename[s] = filename
+                    break  # Found the shard for this file, move to next line
 
-            if file_shard in shards_set:
-                full_path = get_file(
-                    os.path.join(rel_path, filename), output_dir
-                )
-                shard_to_path[file_shard] = full_path
-
-    # Construct strictly parallel lists preserving the order of requested `shards`
     aligned_paths = []
     aligned_shards = []
 
+    # Process requested shards in guaranteed order
     for s in shards:
-        s_str = str(s)
-        if s_str in shard_to_path:
-            path = shard_to_path[s_str]
-            if os.path.exists(path):
-                aligned_paths.append(path)
+        if s in shard_to_filename:
+            filename = shard_to_filename[s]
+            full_path = get_file(os.path.join(rel_path, filename), output_dir)
+
+            if os.path.exists(full_path):
+                aligned_paths.append(full_path)
                 aligned_shards.append(s)
 
     return astropy.table.Table(
